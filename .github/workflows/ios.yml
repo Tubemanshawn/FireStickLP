@@ -31,8 +31,14 @@ jobs:
             -configuration Release -sdk iphoneos \
             SYMROOT="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build | tee build.log | grep -E "error:|warning: .*FireTvLp|BUILD (SUCCEEDED|FAILED)" || true
-          test -d build/Release-iphoneos/FireTvLp.app
+            build > build.log 2>&1 || true
+          # Show compile errors as annotations (readable on the run page and
+          # through GitHub's public API), then fail if the app wasn't made.
+          grep -E "^/.*: error: " build.log | sort -u | head -30 | while IFS= read -r line; do
+            echo "::error::${line#*FireTvLp-iOS/}"
+          done
+          tail -5 build.log
+          test -f build/Release-iphoneos/FireTvLp.app/FireTvLp
 
       - name: Package FireTvLp.ipa
         working-directory: FireTvLp-iOS

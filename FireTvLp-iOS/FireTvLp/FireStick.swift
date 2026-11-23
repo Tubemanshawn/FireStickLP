@@ -260,7 +260,9 @@ final class FireStick: ObservableObject {
     /// Sends one monkey command, e.g. "press 22". False = use the slow way.
     private func monkeySend(_ line: String) async -> Bool {
         guard let c = client, await monkeyReady() else { return false }
-        if monkeyLink == nil || !(await c.isStreamOpen(monkeyLink!)) {
+        var linkOpen = false
+        if let l = monkeyLink { linkOpen = await c.isStreamOpen(l) }
+        if !linkOpen {
             do {
                 monkeyLink = try await c.openStream("tcp:\(Self.monkeyPort)", timeout: 3)
             } catch {
