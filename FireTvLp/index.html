@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: mediastream:">
+<title>FireTvLp</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; gap: 14px; padding: 14px;
+    background: #0b0b0b; color: #eee; font: 15px/1.4 system-ui, sans-serif;
+  }
+  #left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  #right { width: 240px; flex: none; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 4px; }
+
+  .screen { position: relative; flex: 1; min-height: 0; background: #000;
+    border-radius: 10px; overflow: hidden; border: 2px solid #222; }
+  video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  #osd { position: absolute; left: 4%; top: 5%; font: bold 22px Consolas, monospace;
+    color: #3f3; text-shadow: 0 0 6px #3f3, 2px 2px 0 #000;
+    opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #osd.show { opacity: 1; }
+  #remoteBadge { position: absolute; right: 4%; top: 5%; font: bold 15px system-ui;
+    background: #c62828; color: #fff; padding: 4px 10px; border-radius: 6px; display: none; }
+  body.remote #remoteBadge { display: block; }
+
+  button { font: inherit; padding: 8px 10px; border: 0; border-radius: 8px;
+    background: #333; color: #fff; cursor: pointer; }
+  button:hover { filter: brightness(1.2); }
+  button:active { transform: translateY(1px); }
+  button.on { background: #2e7d32; }
+  select, input { font: inherit; padding: 6px; border-radius: 8px; background: #222; color: #fff;
+    border: 1px solid #444; width: 100%; min-width: 0; }
+  label { font-size: 13px; color: #bbb; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  h3 { margin: 6px 0 0; font-size: 14px; color: #ffa726; }
+  #msg { font-size: 12px; color: #ffb74d; min-height: 1em; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #c22; display: inline-block; }
+  .dot.up { background: #2c2; box-shadow: 0 0 8px #3f3; }
+  .ver { color: #666; font-size: 12px; }
+
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .pad button { padding: 14px 0; font-size: 16px; }
+  .pad .ok { background: #e65100; font-weight: bold; }
+  .wide { grid-column: 1 / -1; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  body.remote-off .pad button, body.remote-off [data-k], body.remote-off #remoteBtn { opacity: .35; }
+  #pcRemoteBtn.off { background: #8a1c1c; }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div class="screen" id="screenBox">
+    <video id="video" playsinline muted></video>
+    <div id="osd">CLICK TO START</div>
+    <div id="remoteBadge">● REMOTE MODE</div>
+  </div>
+  <div class="row">
+    <button id="listenBtn">🔇 Listen: OFF</button>
+    <button id="remoteBtn">🎮 Remote Mode</button>
+    <button id="pcRemoteBtn" title="Turn the PC remote off so the phone app (or the other PC app) can control the Fire Stick">📡 PC remote: ON</button>
+    <span style="margin-left:auto"><span class="dot" id="statusDot"></span> Fire Stick <span class="ver" id="ver"></span></span>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<div id="right">
+  <h3>Remote</h3>
+  <div class="pad">
+    <button></button>
+    <button data-k="up">▲</button>
+    <button></button>
+    <button data-k="left">◀</button>
+    <button class="ok" data-k="ok">OK</button>
+    <button data-k="right">▶</button>
+    <button></button>
+    <button data-k="down">▼</button>
+    <button></button>
+  </div>
+  <div class="two">
+    <button data-k="back">↩ Back</button>
+    <button data-k="home">⌂ Home</button>
+    <button data-k="menu">☰ Menu</button>
+    <button data-k="apps">▦ Apps</button>
+    <button data-k="rewind">⏪</button>
+    <button data-k="forward">⏩</button>
+    <button data-k="playpause" class="wide">⏯ Play / Pause</button>
+    <button data-k="voldown">🔉 Vol −</button>
+    <button data-k="volup">🔊 Vol +</button>
+    <button data-k="sleep">⏻ Sleep</button>
+    <button data-k="wake">☀ Wake</button>
+  </div>
+
+  <h3>Search (type on Fire TV)</h3>
+  <input id="typeBox" placeholder="type then Enter">
+
+  <h3>Fire Stick address</h3>
+  <input id="ipBox" placeholder="e.g. 192.168.1.50" spellcheck="false" autocomplete="off">
+  <div class="two">
+    <button id="ipConnect">Connect</button>
+    <button id="ipDisconnect">Disconnect</button>
+  </div>
+  <label style="color:#888">Find it on the Fire Stick: Settings → My Fire TV → About → Network.</label>
+
+  <h3>Devices</h3>
+  <label>Video <select id="cam"></select></label>
+  <label>TV sound <select id="aud"></select></label>
+  <label>Play to <select id="out"></select></label>
+  <label style="color:#888">Hotkey Ctrl+Alt+R toggles Remote Mode anywhere.</label>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

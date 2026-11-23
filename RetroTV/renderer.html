@@ -6,6 +6,7 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: mediastream:">
 
 <title>Retro TV</title>
+<link rel="stylesheet" href="skins.css">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -38,21 +39,7 @@
   .app button { padding: 3px 7px; font-size: 11px; background: #5d1f1f; }
   #appList { display: flex; flex-direction: column; gap: 4px; }
 
-  /* ---- TV ---- */
-  .screen {
-    position: relative; flex: 1; min-height: 0; background: #000;
-    border-radius: 10px; overflow: hidden; border: 3px solid #222;
-  }
-  video { width: 100%; height: 100%; object-fit: contain; background: #000;
-    filter: var(--bw,) var(--warm,); }
-  .scan, .vig { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-  .scan { background: repeating-linear-gradient(to bottom, rgba(0,0,0,.35) 0 1px, transparent 1px 3px); }
-  .vig  { background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%); }
-  body.fx-scan .scan { opacity: 1; }
-  body.fx-curve .vig { opacity: 1; }
-  body.fx-bw   video { --bw: grayscale(1) contrast(1.15); }
-  body.fx-warm video { --warm: sepia(.3) saturate(1.3); }
-
+  /* ---- TV (frame, screen and effects are in skins.css) ---- */
   #osd {
     position: absolute; left: 4%; top: 5%; font: bold 22px Consolas, monospace;
     color: #3f3; text-shadow: 0 0 6px #3f3, 2px 2px 0 #000;
@@ -86,22 +73,32 @@
   .pad .ok { background: #1565c0; font-weight: bold; }
   .wide { grid-column: 1 / -1; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  body.remote-off .pad button, body.remote-off [data-k], body.remote-off #remoteBtn { opacity: .35; }
+  #pcRemoteBtn.off { background: #8a1c1c; }
 </style>
 </head>
-<body class="fx-scan fx-curve">
+<body class="skin-plain fire-down">
 
 <div id="left">
-  <div class="screen" id="screenBox">
-    <video id="video" playsinline muted></video>
-    <div class="scan"></div>
-    <div class="vig"></div>
-    <div id="osd">CLICK TO START</div>
-    <div id="remoteBadge">● REMOTE MODE</div>
+  <div class="tv" id="tvBox">
+    <div class="antenna"></div>
+    <div class="screen" id="screenBox">
+      <video id="video" playsinline muted></video>
+      <div class="scan"></div>
+      <div class="vig"></div>
+      <div id="osd">CLICK TO START</div>
+      <div id="remoteBadge">● REMOTE MODE</div>
+    </div>
+    <div class="side"><div class="knob"></div><div class="knob"></div><div class="grille"></div></div>
+    <div class="badge">RETRO TV</div>
+    <div class="light"></div>
   </div>
   <div class="row">
     <button id="pipBtn">⧉ Pop out</button>
     <button id="listenBtn">🔇 Listen: OFF</button>
     <button id="remoteBtn">🎮 Remote Mode</button>
+    <button id="pcRemoteBtn" title="Turn the PC remote off so the phone app (or the other PC app) can control the Fire Stick">📡 PC remote: ON</button>
+    <button id="streamerBtn" title="Hide your Fire Stick's IP address on screen">🎥 Streamer</button>
     <span style="margin-left:auto"><span class="dot" id="statusDot"></span> Fire Stick</span>
   </div>
   <div id="msg"></div>
@@ -147,7 +144,7 @@
 
   <h3>Fire Stick address</h3>
   <div class="row">
-    <input id="ipBox" style="flex:1; min-width:0; padding:6px; border-radius:8px; background:#222; color:#fff; border:1px solid #444;" placeholder="e.g. 192.168.1.50" spellcheck="false">
+    <input id="ipBox" style="flex:1; min-width:0; padding:6px; border-radius:8px; background:#222; color:#fff; border:1px solid #444;" placeholder="e.g. 192.168.1.50" spellcheck="false" autocomplete="off">
   </div>
   <div class="two">
     <button id="ipConnect">Connect</button>
@@ -168,6 +165,13 @@
   <label>Play to <select id="out"></select></label>
 
   <h3>Look</h3>
+  <label>Skin <select id="skin">
+    <option value="plain">Plain</option>
+    <option value="wood">70s Wood</option>
+    <option value="silver">80s Silver</option>
+    <option value="black">90s Black</option>
+    <option value="portable">Portable</option>
+  </select></label>
   <div class="two">
     <button data-fx="scan">Scanlines</button>
     <button data-fx="curve">CRT</button>

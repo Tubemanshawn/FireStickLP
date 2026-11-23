@@ -11,11 +11,10 @@ const { state, send } = require('./state');
 const { shell, parsePkgs } = require('./adb');
 const { applyLauncherSwap } = require('./launcher');
 const { MAX_CACHED, optimizeRam } = require('./ram');
-
-const APP_DIR = path.join(__dirname, '..');
+const { projectFile } = require('./paths');
 
 function debloatListFile() {
-  const guesses = [path.join(APP_DIR, '..', 'debloat-list.txt'), path.join(APP_DIR, 'debloat-list.txt')];
+  const guesses = [projectFile('debloat-list.txt'), path.join(__dirname, '..', 'debloat-list.txt')];
   return guesses.find((g) => fs.existsSync(g)) || guesses[0];
 }
 function debloatLogFile() { return path.join(path.dirname(debloatListFile()), 'auto-debloat-log.txt'); }

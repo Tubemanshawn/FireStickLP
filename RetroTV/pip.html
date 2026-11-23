@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: mediastream:">
+<title>Retro TV mini</title>
+<link rel="stylesheet" href="skins.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; user-select: none; }
+  body { display: flex; padding: 6px; box-sizing: border-box; }
+  .screen video { pointer-events: none; }
+  #osd {
+    position: absolute; top: 8px; right: 10px; padding: 2px 8px; border-radius: 4px;
+    font: bold 14px/1.4 Consolas, monospace; color: #7CFC7C; background: rgba(0,0,0,.55);
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #osd.show { opacity: 1; }
+  #x {
+    position: absolute; top: 6px; left: 6px; z-index: 5; width: 22px; height: 22px; border: 0; border-radius: 4px;
+    background: rgba(0,0,0,.6); color: #ddd; font: 14px/22px sans-serif; cursor: pointer;
+    opacity: 0; transition: opacity .2s;
+  }
+  body:hover #x { opacity: 1; }
+</style>
+</head>
+<body class="skin-plain">
+  <div class="tv">
+    <div class="antenna"></div>
+    <div class="screen">
+      <video id="video" playsinline muted></video>
+      <div class="scan"></div>
+      <div class="vig"></div>
+      <div id="osd"></div>
+    </div>
+    <div class="side"><div class="knob"></div><div class="knob"></div><div class="grille"></div></div>
+    <div class="badge">RETRO TV</div>
+    <div class="light"></div>
+  </div>
+  <button id="x" title="Close mini window">✕</button>
+  <script src="pip.js"></script>
+</body>
+</html>

@@ -10,7 +10,7 @@ const CHECK_EVERY_MS = 20000;
 // Connect (or re-check the connection). Runs every 20 s.
 async function connect() {
   // Disconnected on purpose, or no address set yet (first run): don't try.
-  if (state.manualOff || !state.fireIp) { send('fire-status', false); return false; }
+  if (state.manualOff || state.remoteOff || !state.fireIp) { send('fire-status', false); return false; }
   await adb(['connect', state.fireIp], 6000);
   const r = await adb(['-s', state.fireIp, 'get-state'], 4000);
   const up = r.out.includes('device');
@@ -38,7 +38,7 @@ async function setFireIp(raw) {
   state.manualOff = false;
   state.fireUp = false;                       // force a fresh start on the new address
   const up = await connect();
-  return { ok: true, ip, up };
+  return { ok: true, ip, up, remoteOff: state.remoteOff };
 }
 
 async function disconnectFire() {
@@ -51,4 +51,23 @@ async function disconnectFire() {
   return true;
 }
 
-module.exports = { CHECK_EVERY_MS, connect, setFireIp, disconnectFire };
+// PC remote on/off (saved). Off = this app stops talking to the Fire Stick
+// entirely (no remote helper, no adb connection, no debloat), so the phone
+// app or the other PC app can have it. The screen keeps working.
+async function setRemoteOff(off) {
+  state.remoteOff = !!off;
+  saveSettings();
+  if (state.remoteOff) {
+    state.fireUp = false;
+    await stopMonkey();
+    if (state.fireIp) await adb(['disconnect', state.fireIp], 4000);
+    send('fire-status', false);
+    setLink('off');
+  } else {
+    state.manualOff = false;
+    await connect();
+  }
+  return state.remoteOff;
+}
+
+module.exports = { CHECK_EVERY_MS, connect, setFireIp, disconnectFire, setRemoteOff };

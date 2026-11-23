@@ -2,14 +2,21 @@
 
 Watch your Fire TV Stick on your Windows PC through an HDMI capture card, in a retro TV frame. It also works as a fast remote and tunes the Fire Stick over ADB, with **no root needed**.
 
-Version **1.0.0**. Built and tested on a Fire TV Stick 4K Max (AFTKRT), Fire OS 8.1.8.6.
+Two apps, never open at the same time:
+- **Retro TV (A1.0.0)**, in `RetroTV/`: the full app, covering the TV, remote, auto-debloat, RAM tools, skins and the mini window.
+- **FireTvLp (B1.0.0)**, in `FireTvLp/`: just the screen and the remote. Debloat and RAM tools are moving to an iPhone app (in progress, `FireTvLp-iOS/`).
+
+Built and tested on a Fire TV Stick 4K Max (AFTKRT), Fire OS 8.1.8.6.
 
 ## Features
 
 **TV**
 - Live picture and sound from any USB capture card. Picks the capture card's audio automatically and lets you choose the speakers.
-- Retro looks: scanlines, CRT vignette, B&W, warm.
-- Pop-out picture-in-picture, and a Listen on/off toggle.
+- Retro looks: scanlines, CRT vignette, B&W, warm, plus TV **skins** (70s Wood, 80s Silver, 90s Black, Portable). Look settings are saved.
+- **⧉ Pop out** mini window: always on top, same skin, scroll = volume, click = OK, right-click = Back, drag to move.
+- Listen on/off and volume (wheel or Vol +/−). This changes the PC's sound, because the Fire Stick's HDMI volume is fixed.
+- **🎥 Streamer mode** hides your Fire Stick's IP on screen.
+- **📡 PC remote: OFF** leaves the Fire Stick alone (for testing the phone app) while the picture keeps working.
 
 **Remote** (over ADB, about 10–50 ms per press)
 - On-screen remote. Holding the arrows, volume or rewind/fast-forward repeats them.
@@ -47,8 +54,7 @@ Version **1.0.0**. Built and tested on a Fire TV Stick 4K Max (AFTKRT), Fire OS 
    5. In the app, type the Fire Stick's IP under **Fire Stick address** and press **Connect**.
 3. Click the TV picture once to start the capture card.
 
-After the first run, start the app with `Setup-and-Run.bat` again, or make a shortcut to
-`RetroTV\node_modules\electron\dist\electron.exe` with the `RetroTV` folder as its argument.
+**Standalone exe:** after the first run, run `npm run build` in `RetroTV` to make `RetroTV-app\Retro TV.exe`, and the same in `FireTvLp` to make `FireTvLp-app\FireTvLp.exe`. Each folder runs on its own (no Node needed); make a desktop shortcut to the exe. FireTvLp reuses the Electron that Retro TV's setup unpacked.
 
 ## Debloat list
 
@@ -73,6 +79,7 @@ Long-press Home on the real remote to reach Amazon's home when you need it.
 
 | Problem | Fix |
 |---|---|
+| "… is already open. Close it first" | Retro TV and FireTvLp share the Fire Stick connection, so only one runs at a time. |
 | Remote stops responding, adb commands hang | On the Fire Stick: Developer Options → turn ADB Debugging **off, wait 5 s, on**. Only run one copy of the app. |
 | `npm start` fails, `electron.exe` missing | Run `Setup-and-Run.bat`. It unpacks Electron itself (newer Node versions break Electron's own installer). |
 | Home on the real remote opens Amazon's home | Normal for 15 s after you use the PC remote. The remote helper pauses the redirect while in use. |
@@ -90,8 +97,10 @@ Long-press Home on the real remote to reach Amazon's home when you need it.
 ```
 debloat-list.txt     apps to turn off (shared by the app and scripts)
 fire-ip.txt          your Fire Stick's IP (created by the app; not committed)
-RetroTV/             the app (Electron)
-  main.js, preload.js, renderer.html, renderer.js
+RetroTV/             Retro TV A (Electron)
+  main.js, preload.js, renderer.html, renderer.js, pip.html/js, skins.css
+  build.js           makes the standalone RetroTV-app\ folder
+FireTvLp/            FireTvLp B: screen + remote only (Electron)
   src/               app logic, one file per job
   Setup-and-Run.bat  install + run
 scripts/             standalone helpers: UNDO, RESTORE, State-Check, Memory-Check, Scan
@@ -108,5 +117,7 @@ The app saves the address you enter and also writes it to `fire-ip.txt` in this 
 
 ## Version history
 
+- **A1.0.0 update**: standalone exe, mini window with scroll volume, PC volume control, skins, saved look, streamer mode, PC remote on/off, one-app lock.
+- **B1.0.0**: FireTvLp, screen + remote only.
 - **1.0.0**: first release. TV view, fast remote with hold-OK long-press, auto-debloat, RAM tools, lighter home screen support, System tab.
 - **Planned for 2.0**: deeper RAM trimming (target under 50% used).

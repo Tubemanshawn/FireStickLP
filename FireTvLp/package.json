@@ -1,0 +1,11 @@
+{
+  "name": "firetvlp",
+  "version": "1.0.0",
+  "description": "FireTvLp (B line of FireStickLP): watch a Fire TV Stick through a capture card with a fast ADB remote",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "..\\RetroTV\\node_modules\\electron\\dist\\electron.exe .",
+    "build": "node build.js"
+  }
+}

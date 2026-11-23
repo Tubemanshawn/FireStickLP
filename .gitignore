@@ -2,6 +2,7 @@
 RetroTV/node_modules/
 RetroTV/node/
 platform-tools/
+RetroTV-app/
 
 # Personal logs, reports and old files
 archive/
@@ -19,3 +20,4 @@ desktop.ini
 
 # Your Fire Stick's IP (written by the app, read by the scripts)
 fire-ip.txt
+FireTvLp-app/

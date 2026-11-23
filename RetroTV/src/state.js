@@ -10,6 +10,7 @@ const state = {
   // Connection
   fireUp: false,       // adb can reach the Fire Stick
   manualOff: false,    // user pressed Disconnect: don't auto-reconnect
+  remoteOff: false,    // PC remote turned off (saved): leave the Fire Stick alone, e.g. while testing the phone app
 
   // Saved settings
   autoDebloat: true,   // re-debloat on connect / after reboots

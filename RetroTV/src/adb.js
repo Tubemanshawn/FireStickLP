@@ -3,13 +3,14 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { state } = require('./state');
+const { projectFile } = require('./paths');
 
-// adb.exe lives in ..\platform-tools next to the app folder (or on PATH).
+// adb.exe lives in platform-tools in the project folder (see paths.js),
+// next to the app code, or on PATH.
 function findAdb() {
-  const appDir = path.join(__dirname, '..');
   const guesses = [
-    path.join(appDir, 'platform-tools', 'adb.exe'),
-    path.join(appDir, '..', 'platform-tools', 'adb.exe'),
+    projectFile('platform-tools', 'adb.exe'),
+    path.join(__dirname, '..', 'platform-tools', 'adb.exe'),
   ];
   return guesses.find((g) => fs.existsSync(g)) || 'adb';
 }

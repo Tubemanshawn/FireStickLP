@@ -186,7 +186,7 @@ async function superviseMonkey() {
   if (superviseBusy) return;
   superviseBusy = true;
   try {
-    if (state.manualOff) { setLink('off'); return; }
+    if (state.manualOff || state.remoteOff) { setLink('off'); return; }
     if (!state.fireUp) { setLink('down'); return; }
     if (monkeySock) {
       if (awaiting > 0 && Date.now() - oldestPendingAt > MONKEY_STUCK_MS) {

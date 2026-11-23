@@ -1,0 +1,70 @@
+// ===== Fire Stick connection: connect, change address, disconnect =====
+const { state, send } = require('./state');
+const { adb } = require('./adb');
+const { normalizeIp, saveSettings } = require('./settings');
+const { superviseMonkey, stopMonkey, resetRetry, setLink } = require('./remote');
+
+const CHECK_EVERY_MS = 20000;
+
+// Connect (or re-check the connection). Runs every 20 s.
+async function connect() {
+  // Disconnected on purpose, or no address set yet (first run): don't try.
+  if (state.manualOff || state.remoteOff || !state.fireIp) { send('fire-status', false); return false; }
+  await adb(['connect', state.fireIp], 6000);
+  const r = await adb(['-s', state.fireIp, 'get-state'], 4000);
+  const up = r.out.includes('device');
+  if (up && !state.fireUp) { await stopMonkey(); resetRetry(); }   // (re)connected: start fresh
+  state.fireUp = up;
+  send('fire-status', up);
+  superviseMonkey();
+  return up;
+}
+
+async function setFireIp(raw) {
+  const ip = normalizeIp(raw);
+  if (!ip) return { ok: false, error: 'That doesn\'t look like an address. Example: 192.168.1.50' };
+  if (ip !== state.fireIp) {
+    if (state.fireIp) {                       // tear down the link to the old address
+      await stopMonkey();
+      await adb(['disconnect', state.fireIp], 4000);
+    }
+    state.fireIp = ip;
+    state.replacementHome = null;
+    saveSettings();
+  }
+  state.manualOff = false;
+  state.fireUp = false;                       // force a fresh start on the new address
+  const up = await connect();
+  return { ok: true, ip, up, remoteOff: state.remoteOff };
+}
+
+async function disconnectFire() {
+  state.manualOff = true;
+  state.fireUp = false;
+  await stopMonkey();
+  await adb(['disconnect', state.fireIp], 4000);
+  send('fire-status', false);
+  setLink('off');
+  return true;
+}
+
+// PC remote on/off (saved). Off = this app stops talking to the Fire Stick
+// entirely (no remote helper, no adb connection, no debloat), so the phone
+// app or the other PC app can have it. The screen keeps working.
+async function setRemoteOff(off) {
+  state.remoteOff = !!off;
+  saveSettings();
+  if (state.remoteOff) {
+    state.fireUp = false;
+    await stopMonkey();
+    if (state.fireIp) await adb(['disconnect', state.fireIp], 4000);
+    send('fire-status', false);
+    setLink('off');
+  } else {
+    state.manualOff = false;
+    await connect();
+  }
+  return state.remoteOff;
+}
+
+module.exports = { CHECK_EVERY_MS, connect, setFireIp, disconnectFire, setRemoteOff };

@@ -8,7 +8,7 @@ function settingsFile() { return path.join(app.getPath('userData'), 'settings.js
 
 // fire-ip.txt in the project folder holds just the IP, shared with the
 // helper scripts in ..\scripts.
-const IP_FILE = path.join(__dirname, '..', '..', 'fire-ip.txt');
+const IP_FILE = require('./paths').projectFile('fire-ip.txt');
 function readIpFile() {
   try { return fs.readFileSync(IP_FILE, 'utf8').trim(); } catch (e) { return ''; }
 }
@@ -29,6 +29,7 @@ function loadSettings() {
     const s = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
     if (s.fireIp && normalizeIp(s.fireIp)) state.fireIp = normalizeIp(s.fireIp);
     if (typeof s.autoDebloat === 'boolean') state.autoDebloat = s.autoDebloat;
+    if (typeof s.remoteOff === 'boolean') state.remoteOff = s.remoteOff;
     if (typeof s.launcherSwap === 'boolean') state.launcherSwap = s.launcherSwap;
   } catch (e) { /* first run or unreadable: keep defaults */ }
   // No address saved yet: use the scripts' fire-ip.txt if there is one.
@@ -39,7 +40,7 @@ function loadSettings() {
 function saveSettings() {
   try {
     fs.writeFileSync(settingsFile(), JSON.stringify({
-      fireIp: state.fireIp, autoDebloat: state.autoDebloat, launcherSwap: state.launcherSwap,
+      fireIp: state.fireIp, autoDebloat: state.autoDebloat, launcherSwap: state.launcherSwap, remoteOff: state.remoteOff,
     }, null, 2));
   } catch (e) {}
   if (state.fireIp) writeIpFile();

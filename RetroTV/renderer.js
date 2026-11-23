@@ -74,22 +74,71 @@ function setListen(on) {
   b.classList.toggle('on', on);
 }
 $('listenBtn').onclick = () => setListen(!listen);
-$('pipBtn').onclick = async () => {
-  try {
-    if (document.pictureInPictureElement) await document.exitPictureInPicture();
-    else await video.requestPictureInPicture();
-  } catch (e) { say('PiP failed: ' + e.message); }
-};
+
+// ---------- Volume (Retro TV's own sound) ----------
+// The Fire Stick's HDMI volume is fixed at full (its volume keys only ask the
+// TV to change volume over HDMI, which a capture card ignores), so every
+// volume control in the app changes the sound played here instead.
+const VOL_STEP = 5;
+let vol = Math.min(100, Math.max(0, parseInt(store.get('vol') ?? '100', 10) || 0));
+video.volume = vol / 100;
+function changeVol(delta) {
+  vol = Math.min(100, Math.max(0, vol + delta));
+  video.volume = vol / 100;
+  store.set('vol', String(vol));
+  if (delta > 0 && !listen) setListen(true);   // turning it up should be heard
+  const text = listen ? `VOL ${vol}%` : `VOL ${vol}% (Listen OFF)`;
+  showOsd(text);
+  window.fire.pipVolShow(text);
+  return vol;
+}
+window.fire.onVol((delta) => changeVol(delta));   // from the mini window
+// Remote buttons go through here so Vol +/- change this sound.
+function press(k) {
+  if (k === 'volup') return changeVol(VOL_STEP);
+  if (k === 'voldown') return changeVol(-VOL_STEP);
+  return window.fire.key(k);
+}
+// Pop out = Retro TV's own mini window (scroll = volume, click = OK,
+// right-click = Back). Sound keeps coming from this window.
+$('pipBtn').onclick = () => window.fire.pipToggle($('cam').value);
+window.fire.onPip((open) => {
+  $('pipBtn').textContent = open ? '⧉ Close mini' : '⧉ Pop out';
+  $('pipBtn').classList.toggle('on', open);
+});
 
 // ---------- Device pickers + effects ----------
 $('cam').onchange = () => { store.set('cam', $('cam').value); openCard(); };
 $('aud').onchange = () => { store.set('aud', $('aud').value); openCard(); };
 $('out').onchange = () => { store.set('out', $('out').value); applyOutput(); };
-document.querySelectorAll('[data-fx]').forEach((b) => {
-  const cls = 'fx-' + b.dataset.fx;
-  b.classList.toggle('on', document.body.classList.contains(cls));
-  b.onclick = () => b.classList.toggle('on', document.body.classList.toggle(cls));
+// ---------- Look: skin + effects (saved, and shared with the mini window) ----------
+const SKINS = ['plain', 'wood', 'silver', 'black', 'portable'];
+const FX = ['scan', 'curve', 'bw', 'warm'];
+const look = (() => {
+  try {
+    const s = JSON.parse(store.get('look') || '');
+    return { skin: SKINS.includes(s.skin) ? s.skin : 'plain', fx: (s.fx || []).filter((f) => FX.includes(f)) };
+  } catch (e) { return { skin: 'plain', fx: ['scan', 'curve'] }; }   // first run
+})();
+function applyLook() {
+  const b = document.body;
+  SKINS.forEach((s) => b.classList.toggle('skin-' + s, s === look.skin));
+  FX.forEach((f) => b.classList.toggle('fx-' + f, look.fx.includes(f)));
+  document.querySelectorAll('[data-fx]').forEach((btn) => btn.classList.toggle('on', look.fx.includes(btn.dataset.fx)));
+  $('skin').value = look.skin;
+  store.set('look', JSON.stringify(look));
+  window.fire.lookSet({ ...look, up: fireUp });
+}
+let fireUp = false;
+document.querySelectorAll('[data-fx]').forEach((btn) => {
+  btn.onclick = () => {
+    const f = btn.dataset.fx;
+    look.fx = look.fx.includes(f) ? look.fx.filter((x) => x !== f) : [...look.fx, f];
+    applyLook();
+  };
 });
+$('skin').onchange = () => { look.skin = $('skin').value; applyLook(); };
+applyLook();
 
 // ---------- Fire Stick remote ----------
 // On-screen buttons. Arrows, volume and rewind/forward repeat while held,
@@ -128,9 +177,9 @@ document.querySelectorAll('[data-k]').forEach((b) => {
   b.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     stopHold();
-    window.fire.key(k);
+    press(k);
     holdTimer = setTimeout(() => {
-      holdTimer = setInterval(() => window.fire.key(k), REPEAT_EVERY);
+      holdTimer = setInterval(() => press(k), REPEAT_EVERY);
     }, REPEAT_DELAY);
   });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => b.addEventListener(ev, stopHold));
@@ -272,6 +321,19 @@ window.fire.onDebloat(showDebloat);
 $('debloatAuto').onclick = async () => { debloatAutoOn = await window.fire.debloatAuto(!debloatAutoOn); showDebloatAuto(debloatAutoOn); };
 $('debloatNow').onclick = () => window.fire.debloatNow();
 
+// Streamer mode: hides the Fire Stick's IP on screen (the box shows dots,
+// messages don't name the address). Saved. Typing a new address still works.
+let streamer = store.get('streamer') === '1';
+function applyStreamer() {
+  $('ipBox').type = streamer ? 'password' : 'text';
+  $('streamerBtn').classList.toggle('on', streamer);
+  $('streamerBtn').textContent = streamer ? '🎥 Streamer: ON' : '🎥 Streamer';
+  if (streamer && /\d+\.\d+\.\d+\.\d+/.test(msg.textContent)) say('');   // clear a message showing the IP
+  store.set('streamer', streamer ? '1' : '0');
+}
+$('streamerBtn').onclick = () => { streamer = !streamer; applyStreamer(); };
+applyStreamer();
+
 // Fire Stick address: load saved value, Connect / Disconnect
 window.fire.config().then((c) => {
   $('ipBox').value = c.ip.replace(/:5555$/, '');
@@ -281,8 +343,10 @@ async function connectIp() {
   say('Connecting…');
   const r = await window.fire.setIp($('ipBox').value);
   if (!r.ok) return say(r.error);
+  if (r.remoteOff) { $('ipBox').value = r.ip.replace(/:5555$/, ''); return say('Address saved. PC remote is OFF: turn it on to connect.'); }
   $('ipBox').value = r.ip.replace(/:5555$/, '');
-  say(r.up ? 'Connected to ' + r.ip : 'Saved ' + r.ip + ', but the Fire Stick isn\'t answering. Check the address and that ADB Debugging is on.');
+  const where = streamer ? 'your Fire Stick' : r.ip;
+  say(r.up ? 'Connected to ' + where : 'Saved ' + (streamer ? 'the address' : r.ip) + ', but the Fire Stick isn\'t answering. Check the address and that ADB Debugging is on.');
 }
 $('ipConnect').onclick = connectIp;
 $('ipBox').addEventListener('keydown', (e) => { if (e.key === 'Enter') connectIp(); });
@@ -291,6 +355,8 @@ $('ipDisconnect').onclick = async () => { await window.fire.disconnect(); say('D
 // Connection status light
 window.fire.onStatus((up) => {
   $('statusDot').classList.toggle('up', up);
+  document.body.classList.toggle('fire-down', !up);   // the skins' power light
+  fireUp = up; window.fire.lookSet({ ...look, up });
 });
 
 // Remote link status: fast = normal, slow/down = reconnecting
@@ -304,6 +370,24 @@ window.fire.onLink((state) => {
 
 // Remote Mode button + indicator (toggled here or by the global hotkey)
 $('remoteBtn').onclick = () => window.fire.toggleRemote();
+
+// PC remote on/off (saved). Off = this app leaves the Fire Stick alone so the
+// phone app or the other PC app can use it. The screen keeps working.
+let remoteOff = false;
+function showRemoteOff(off) {
+  remoteOff = off;
+  document.body.classList.toggle('remote-off', off);
+  $('pcRemoteBtn').textContent = off ? '📡 PC remote: OFF' : '📡 PC remote: ON';
+  $('pcRemoteBtn').classList.toggle('off', off);
+}
+window.fire.config().then((c) => showRemoteOff(!!c.remoteOff));
+$('pcRemoteBtn').onclick = async () => {
+  $('pcRemoteBtn').disabled = true;
+  showRemoteOff(await window.fire.setRemoteOff(!remoteOff));
+  say(remoteOff ? 'PC remote is OFF: this app is leaving the Fire Stick alone (screen still works).' : 'PC remote is ON: reconnecting…');
+  showOsd(remoteOff ? 'PC REMOTE OFF' : 'PC REMOTE ON');
+  $('pcRemoteBtn').disabled = false;
+};
 window.fire.onRemoteMode((on) => {
   document.body.classList.toggle('remote', on);
   $('remoteBtn').classList.toggle('on', on);
@@ -325,9 +409,9 @@ box.addEventListener('pointerdown', (e) => { if (e.button === 0 && started) scre
 box.addEventListener('pointerup', (e) => { if (e.button === 0) screenHold.up(); });
 ['pointerleave', 'pointercancel'].forEach((ev) => box.addEventListener(ev, () => screenHold.cancel()));
 box.addEventListener('contextmenu', (e) => { e.preventDefault(); window.fire.key('back'); });
-box.addEventListener('wheel', (e) => {
+$('tvBox').addEventListener('wheel', (e) => {   // whole TV, frame included
   e.preventDefault();
-  window.fire.key(e.deltaY < 0 ? 'volup' : 'voldown');
+  changeVol(e.deltaY < 0 ? VOL_STEP : -VOL_STEP);
 }, { passive: false });
 
 // Keyboard while this window is focused (remote-mode hotkey works anywhere)
