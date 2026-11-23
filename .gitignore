@@ -21,3 +21,9 @@ desktop.ini
 # Your Fire Stick's IP (written by the app, read by the scripts)
 fire-ip.txt
 FireTvLp-app/
+
+# iPhone app build output (made on GitHub)
+FireTvLp-iOS/build/
+FireTvLp-iOS/*.xcodeproj/
+FireTvLp-iOS/Payload/
+FireTvLp-iOS/*.ipa

@@ -56,6 +56,16 @@ Built and tested on a Fire TV Stick 4K Max (AFTKRT), Fire OS 8.1.8.6.
 
 **Standalone exe:** after the first run, run `npm run build` in `RetroTV` to make `RetroTV-app\Retro TV.exe`, and the same in `FireTvLp` to make `FireTvLp-app\FireTvLp.exe`. Each folder runs on its own (no Node needed); make a desktop shortcut to the exe. FireTvLp reuses the Electron that Retro TV's setup unpacked.
 
+## iPhone app (FireTvLp for iPhone, in progress)
+
+`FireTvLp-iOS/` is a phone app that replaces the Fire TV remote app: remote, RAM usage and debloat, over Wi-Fi ADB. iPhones can't run adb, so the app speaks the ADB protocol itself.
+
+1. Every push that changes `FireTvLp-iOS/` builds it on GitHub (**Actions** tab → **Build iPhone app** → latest run → **Artifacts** → `FireTvLp-ipa`).
+2. Unzip the download to get `FireTvLp.ipa` and install it with [Sideloadly](https://sideloadly.io) using your Apple ID. A free Apple ID needs a re-install every 7 days.
+3. In the app: Setup → type the Fire Stick IP → Connect → on the TV tick **Always allow** and press **Allow**.
+
+Set **📡 PC remote: OFF** in the PC app while using the phone.
+
 ## Debloat list
 
 `debloat-list.txt` has one Android package name per line. The app and the scripts in `scripts\` share this list.

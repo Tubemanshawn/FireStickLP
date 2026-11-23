@@ -1,0 +1,54 @@
+# Builds the FireTvLp iPhone app on GitHub's Mac and attaches an unsigned
+# FireTvLp.ipa to the run (Actions tab -> latest run -> Artifacts).
+# Install it with Sideloadly, which signs it with your Apple ID.
+name: Build iPhone app
+
+on:
+  push:
+    paths:
+      - "FireTvLp-iOS/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Make the Xcode project
+        working-directory: FireTvLp-iOS
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: FireTvLp-iOS
+        run: |
+          set -o pipefail
+          xcodebuild -project FireTvLp.xcodeproj -target FireTvLp \
+            -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee build.log | grep -E "error:|warning: .*FireTvLp|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Release-iphoneos/FireTvLp.app
+
+      - name: Package FireTvLp.ipa
+        working-directory: FireTvLp-iOS
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/FireTvLp.app Payload/
+          zip -qry FireTvLp.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FireTvLp-ipa
+          path: FireTvLp-iOS/FireTvLp.ipa
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: FireTvLp-iOS/build.log
