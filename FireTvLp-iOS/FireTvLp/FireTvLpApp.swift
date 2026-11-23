@@ -17,7 +17,17 @@ struct FireTvLpApp: App {
                 .preferredColorScheme(.dark)
         }
         .onChange(of: phase) { newPhase in
-            if newPhase == .active { Task { await fire.connectIfNeeded() } }
+            switch newPhase {
+            case .active:
+                Task {
+                    await fire.connectIfNeeded()
+                    await fire.wakeRemote()          // fast remote ready again
+                }
+            case .background:
+                fire.appWentToBackground()           // don't leave the Home redirect paused
+            default:
+                break
+            }
         }
     }
 }

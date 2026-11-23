@@ -81,6 +81,9 @@ final class FireStick: ObservableObject {
         keepAlive?.cancel()
         if let old = client { await old.close() }
         client = nil
+        idleTask?.cancel()
+        monkeyLink = nil
+        monkeyShell = nil
         status = .connecting
         message = "Connecting to your Fire Stick…"
         do {
@@ -107,6 +110,7 @@ final class FireStick: ObservableObject {
     func disconnect() async {
         userDisconnected = true
         keepAlive?.cancel()
+        await stopMonkey()
         if let c = client { await c.close() }
         client = nil
         status = .disconnected
@@ -117,6 +121,9 @@ final class FireStick: ObservableObject {
     private func lost() {
         guard status == .connected else { return }
         keepAlive?.cancel()
+        idleTask?.cancel()
+        monkeyLink = nil          // gone with the connection (the Fire Stick ends them)
+        monkeyShell = nil
         client = nil
         status = .disconnected
         message = "Lost the Fire Stick. Reconnecting…"
@@ -143,6 +150,7 @@ final class FireStick: ObservableObject {
         } else {
             homeComponent = nil
         }
+        await wakeRemote()
         if autoDebloat { await debloat(reason: "App opened") }
     }
 
@@ -161,12 +169,16 @@ final class FireStick: ObservableObject {
 
     // MARK: Remote
 
-    /// Presses queue up and go out together ("input keyevent 22 22 22"), so
-    /// quick taps aren't each waiting for the last one.
+    /// Presses go to monkey when it's ready (~20-60 ms each). Otherwise they
+    /// queue up and go out together ("input keyevent 22 22 22", ~0.9 s) while
+    /// monkey warms up for the next press.
     func press(_ key: Key) {
         haptic.impactOccurred()
         guard isConnected else { return }
+        noteKey()
         if key == .home, let home = homeComponent {
+            // Opening Projectivy directly: Home through monkey would land on
+            // Amazon's home, because monkey pauses the Home redirect.
             Task { await run("am start -a android.intent.action.MAIN -c android.intent.category.HOME -n \(home) >/dev/null 2>&1") }
             return
         }
@@ -176,11 +188,133 @@ final class FireStick: ObservableObject {
         keyWorkerRunning = true
         Task {
             while !pendingKeys.isEmpty {
+                if await monkeySend("press \(pendingKeys[0])") {
+                    pendingKeys.removeFirst()
+                    continue
+                }
                 let batch = pendingKeys
                 pendingKeys = []
+                Task { await warmMonkey() }          // fast next time
                 await run("input keyevent " + batch.map(String.init).joined(separator: " "))
             }
             keyWorkerRunning = false
+        }
+    }
+
+    // MARK: Fast remote (monkey)
+    // Android's built-in "monkey" test tool, in server mode, takes key presses
+    // over a socket with no Java startup per press. Catch: while something is
+    // connected to it, Android pauses all accessibility services, which breaks
+    // Home on Fire's Home redirect. So (same as the PC app):
+    //   - keep a monkey running but NOT connected ("warm"),
+    //   - connect on the first press,
+    //   - 15 s after the last press, close it and start a fresh warm one,
+    //   - 2 minutes unused (or the app leaves the screen): stop it entirely.
+
+    private static let monkeyPort = 1080
+    private static let killMonkey = "for p in $(pidof com.android.commands.monkey); do kill $p; done"
+    private var monkeyShell: UInt32?          // the running "monkey --port" command
+    private var monkeyLink: UInt32?           // our connection to it, only while in use
+    private var monkeyReadyAt = Date.distantFuture
+    private var monkeyStarting = false
+    private var idleTask: Task<Void, Never>?
+
+    /// Starts monkey on the Fire Stick without connecting to it.
+    func warmMonkey() async {
+        guard isConnected, !monkeyStarting, let c = client else { return }
+        if let s = monkeyShell, await c.isStreamOpen(s) { return }
+        monkeyStarting = true
+        defer { monkeyStarting = false }
+        await run(Self.killMonkey, timeout: 4)                    // leftovers hold the port
+        do {
+            monkeyShell = try await c.openStream("shell:monkey --port \(Self.monkeyPort)")
+            monkeyReadyAt = Date().addingTimeInterval(2.5)        // monkey needs a moment to listen
+        } catch {
+            monkeyShell = nil
+        }
+    }
+
+    /// Stops monkey completely, so the Home redirect works again.
+    func stopMonkey() async {
+        idleTask?.cancel()
+        await shutdownMonkey()
+    }
+
+    private func shutdownMonkey() async {
+        let link = monkeyLink, shell = monkeyShell
+        monkeyLink = nil
+        monkeyShell = nil
+        guard let c = client else { return }
+        if let link { await c.closeStream(link) }
+        if let shell { await c.closeStream(shell) }
+        await run(Self.killMonkey, timeout: 4)
+    }
+
+    private func monkeyReady() async -> Bool {
+        guard let c = client else { return false }
+        if let l = monkeyLink, await c.isStreamOpen(l) { return true }
+        if let s = monkeyShell, await c.isStreamOpen(s), Date() >= monkeyReadyAt { return true }
+        return false
+    }
+
+    /// Sends one monkey command, e.g. "press 22". False = use the slow way.
+    private func monkeySend(_ line: String) async -> Bool {
+        guard let c = client, await monkeyReady() else { return false }
+        if monkeyLink == nil || !(await c.isStreamOpen(monkeyLink!)) {
+            do {
+                monkeyLink = try await c.openStream("tcp:\(Self.monkeyPort)", timeout: 3)
+            } catch {
+                await shutdownMonkey()                            // broken: restart later
+                return false
+            }
+        }
+        guard let link = monkeyLink else { return false }
+        do {
+            try await c.write(link, Data((line + "\n").utf8))
+            return true
+        } catch {
+            await shutdownMonkey()
+            return false
+        }
+    }
+
+    /// After each press: release monkey 15 s later (Home redirect back on),
+    /// keep a fresh warm one, and stop it after 2 minutes unused.
+    private func noteKey() {
+        idleTask?.cancel()
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            if self.monkeyLink != nil {
+                await self.shutdownMonkey()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)   // let the old one free the port
+                guard !Task.isCancelled else { return }
+                await self.warmMonkey()
+            }
+            try? await Task.sleep(nanoseconds: 105_000_000_000)
+            guard !Task.isCancelled else { return }
+            await self.shutdownMonkey()
+        }
+    }
+
+    /// App leaving the screen: stop monkey, asking iOS for a few seconds to finish.
+    func appWentToBackground() {
+        let bg = UIApplication.shared.beginBackgroundTask(withName: "stop-remote", expirationHandler: nil)
+        Task {
+            await stopMonkey()
+            UIApplication.shared.endBackgroundTask(bg)
+        }
+    }
+
+    /// App back on screen: get the fast remote ready (sleeps after 2 min unused).
+    func wakeRemote() async {
+        guard isConnected else { return }
+        await warmMonkey()
+        idleTask?.cancel()
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.shutdownMonkey()
         }
     }
 
@@ -194,7 +328,22 @@ final class FireStick: ObservableObject {
     /// Types into a Fire TV search box, word by word with Space between.
     func type(_ text: String) {
         guard isConnected else { return }
+        noteKey()
         let words = text.replacingOccurrences(of: "\n", with: " ").components(separatedBy: " ")
+        Task {
+            if await monkeyReady() {
+                // Fast: monkey's "type" (a '"' is escaped so monkey doesn't treat it as a quote).
+                for (i, w) in words.enumerated() {
+                    if i > 0 { _ = await monkeySend("press \(Key.space)") }
+                    if !w.isEmpty { _ = await monkeySend("type " + w.replacingOccurrences(of: "\"", with: "\\\"")) }
+                }
+            } else {
+                typeSlowly(words)
+            }
+        }
+    }
+
+    private func typeSlowly(_ words: [String]) {
         var parts: [String] = []
         for (i, w) in words.enumerated() {
             if i > 0 { parts.append("input keyevent \(Key.space)") }

@@ -251,7 +251,9 @@ struct SetupView: View {
         NavigationView {
             Form {
                 Section {
-                    TextField("e.g. 192.168.1.50", text: $fire.ip)
+                    TextField("e.g. 192.168.1.50", text: Binding(
+                        get: { fire.ip },
+                        set: { fire.ip = IPFormatter.format(old: fire.ip, new: $0) }))
                         .keyboardType(.decimalPad)
                         .autocorrectionDisabled()
                     HStack {

@@ -91,8 +91,12 @@ actor ADBClient {
     private struct StreamState {
         var remoteId: UInt32 = 0
         var output = Data()
+        var keepOutput = true                                 // false for long-lived streams
         var closed = false
-        var waiter: CheckedContinuation<Data, Error>?
+        var waiter: CheckedContinuation<Data, Error>?         // shell(): output at close
+        var openWaiter: CheckedContinuation<Void, Error>?     // openStream(): first OKAY
+        var ackWaiter: CheckedContinuation<Void, Error>?      // write(): OKAY for our WRTE
+        var earlyAcks = 0                                     // OKAYs that beat their waiter
     }
 
     init(host: String, port: UInt16 = 5555) {
@@ -187,6 +191,73 @@ actor ADBClient {
         return String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r\n", with: "\n")
     }
 
+    // MARK: Long-lived streams (the fast remote: monkey)
+
+    /// Opens a service ("shell:monkey --port 1080", "tcp:1080") and keeps it open.
+    func openStream(_ service: String, timeout: TimeInterval = 5) async throws -> UInt32 {
+        guard isOpen else { throw ADBError.notConnected }
+        let id = nextId
+        nextId &+= 1
+        var st = StreamState()
+        st.keepOutput = false
+        streams[id] = st
+        try await send(ADBMessage(command: ADBMessage.OPEN, arg0: id, arg1: 0, payload: .cString(service)))
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            await self?.failOpen(id)
+        }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            guard let s = streams[id] else { cont.resume(throwing: ADBError.closed); return }
+            if s.closed { streams[id] = nil; cont.resume(throwing: ADBError.closed) }
+            else if s.remoteId != 0 { cont.resume() }
+            else { streams[id]?.openWaiter = cont }
+        }
+        return id
+    }
+
+    /// Sends data on an open stream and waits for the Fire Stick's OKAY.
+    func write(_ id: UInt32, _ data: Data, timeout: TimeInterval = 3) async throws {
+        guard let s = streams[id], s.remoteId != 0, !s.closed else { throw ADBError.closed }
+        try await send(ADBMessage(command: ADBMessage.WRTE, arg0: id, arg1: s.remoteId, payload: data))
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            await self?.failAck(id)
+        }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            guard let s = streams[id], !s.closed else { cont.resume(throwing: ADBError.closed); return }
+            if s.earlyAcks > 0 { streams[id]?.earlyAcks -= 1; cont.resume() }
+            else { streams[id]?.ackWaiter = cont }
+        }
+    }
+
+    func isStreamOpen(_ id: UInt32) -> Bool {
+        guard let s = streams[id] else { return false }
+        return !s.closed && s.remoteId != 0
+    }
+
+    func closeStream(_ id: UInt32) async {
+        guard let s = streams[id] else { return }
+        streams[id] = nil
+        s.openWaiter?.resume(throwing: ADBError.closed)
+        s.ackWaiter?.resume(throwing: ADBError.closed)
+        s.waiter?.resume(returning: s.output)
+        if s.remoteId != 0 && !s.closed {
+            try? await send(ADBMessage(command: ADBMessage.CLSE, arg0: id, arg1: s.remoteId, payload: Data()))
+        }
+    }
+
+    private func failOpen(_ id: UInt32) {
+        guard let w = streams[id]?.openWaiter else { return }
+        streams[id] = nil
+        w.resume(throwing: ADBError.timeout)
+    }
+
+    private func failAck(_ id: UInt32) {
+        guard let w = streams[id]?.ackWaiter else { return }
+        streams[id]?.ackWaiter = nil
+        w.resume(throwing: ADBError.timeout)
+    }
+
     func close() { shutdown() }
 
     // MARK: Reading
@@ -203,10 +274,24 @@ actor ADBClient {
         let remote = m.arg0, local = m.arg1
         switch m.command {
         case ADBMessage.OKAY:
-            streams[local]?.remoteId = remote
+            guard var s = streams[local] else { return }
+            if s.remoteId == 0 {                    // stream accepted
+                s.remoteId = remote
+                let w = s.openWaiter
+                s.openWaiter = nil
+                streams[local] = s
+                w?.resume()
+            } else if let w = s.ackWaiter {         // our WRTE was received
+                s.ackWaiter = nil
+                streams[local] = s
+                w.resume()
+            } else {
+                s.earlyAcks += 1
+                streams[local] = s
+            }
         case ADBMessage.WRTE:
-            guard streams[local] != nil else { return }
-            streams[local]?.output.append(m.payload)
+            guard let s = streams[local] else { return }
+            if s.keepOutput { streams[local]?.output.append(m.payload) }
             try await send(ADBMessage(command: ADBMessage.OKAY, arg0: local, arg1: remote, payload: Data()))
         case ADBMessage.CLSE:
             finish(local)
@@ -217,6 +302,11 @@ actor ADBClient {
 
     private func finish(_ id: UInt32, error: Error? = nil) {
         guard var s = streams[id] else { return }
+        // Wake anyone waiting to open or write on this stream.
+        s.openWaiter?.resume(throwing: error ?? ADBError.closed)
+        s.openWaiter = nil
+        s.ackWaiter?.resume(throwing: error ?? ADBError.closed)
+        s.ackWaiter = nil
         if let w = s.waiter {
             streams[id] = nil
             if let error, s.output.isEmpty { w.resume(throwing: error) } else { w.resume(returning: s.output) }

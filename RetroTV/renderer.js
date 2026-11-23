@@ -350,6 +350,34 @@ async function connectIp() {
 }
 $('ipConnect').onclick = connectIp;
 $('ipBox').addEventListener('keydown', (e) => { if (e.key === 'Enter') connectIp(); });
+
+// Dots are added as you type the IP: a part is finished (dot added) at 3
+// digits, a number over 25 (26x would pass 255), or a lone 0. Typing "."
+// still works; nothing is added while deleting. (Same rules as the phone app.)
+function formatIp(s) {
+  let out = '', part = '', parts = 0;
+  for (const ch of s.replace(/[^\d.]/g, '')) {
+    if (ch === '.') {
+      if (!part || parts === 3) continue;
+      out += part + '.'; part = ''; parts++;
+    } else {
+      if (parts === 3 && part.length === 3) continue;
+      part += ch;
+      if (parts < 3 && (part.length >= 3 || part === '0' || Number(part) > 25)) { out += part + '.'; part = ''; parts++; }
+    }
+  }
+  return out + part;
+}
+let ipPrev = '';
+$('ipBox').addEventListener('input', () => {
+  const box = $('ipBox'), v = box.value;
+  // Only for plain numbers and dots (a typed host name is left alone), and only while typing forward.
+  if (/^[\d.]*$/.test(v) && v.length > ipPrev.length) {
+    const f = formatIp(v);
+    if (f !== v) box.value = f;
+  }
+  ipPrev = box.value;
+});
 $('ipDisconnect').onclick = async () => { await window.fire.disconnect(); say('Disconnected. Press Connect to reconnect.'); };
 
 // Connection status light
