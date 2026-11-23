@@ -1,0 +1,21 @@
+# Dependencies / binaries (downloaded during setup)
+RetroTV/node_modules/
+RetroTV/node/
+platform-tools/
+
+# Personal logs, reports and old files
+archive/
+auto-debloat-log.txt
+*.log
+memory-check.txt
+state-check.txt
+firestick-report.txt
+debloat-log.txt
+nuke-log.txt
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Your Fire Stick's IP (written by the app, read by the scripts)
+fire-ip.txt

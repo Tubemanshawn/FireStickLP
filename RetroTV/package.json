@@ -1,0 +1,14 @@
+{
+  "name": "retro-tv",
+  "productName": "Retro TV",
+  "version": "1.0.0",
+  "description": "Retro TV: watch a Fire TV Stick through a capture card, with a fast ADB remote, auto-debloat and RAM tools",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "33.4.11"
+  }
+}
